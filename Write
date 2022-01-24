@@ -1,0 +1,86 @@
+from typing import Counter
+import pygame
+import time,os
+
+#写谱的工具
+#做好谱子后连同音乐放到当前文件夹下的新建子文件夹下(需要手动)
+
+size = [1080,720]
+pygame.init()
+
+thisdir='C:/Users/23942/Desktop/程序作业/Python/musicgame/'
+musicfile=thisdir+'music/Roselia - 深愛.mp3' #音乐路径
+fiximg = pygame.image.load(thisdir+'image/adjustment/approachcircle.png')#按钮图片
+rect = pygame.Rect(0,0,250,253)#按钮的矩形信息设置
+#按钮位置
+centers = [
+    [40+125*1,540],
+    [40+125*3,540],
+    [40+125*5,540],
+    [40+125*7,540]
+]
+
+#键盘信息
+keys=[100,102,106,107]
+keypassage={100:0,102:1,106:2,107:3}
+pykeys={100:'d',102:'f',106:'j',107:'k'}
+pyvals={'d':100,'f':102,'j':106,'k':107}
+
+commands=[]#记录note的信息的列表
+
+#按钮类
+class Showcommand:
+    def __init__(self):
+        self.imglist = []
+    def update(self):
+        for i in self.imglist:
+            i.update()
+    def add(self,key):
+        if key in keys:
+            direct=centers[keypassage[key]]
+            keystring=str(keypassage[key])#通道信息
+            self.imglist.append(Imgs(list(direct)))#位置信息
+            commands.append([keystring,str(round(time.time()-starttime,3))])
+show=Showcommand()
+
+#按键反馈类：当按下键盘按键时，对应的按钮会亮起
+class Imgs:
+    def __init__(self,direct):
+        self.img=pygame.image.load(thisdir+'image/adjustment/gnote.png')#反馈图片
+        self.count=0
+        self.max=10
+        self.alive=True
+        self.rect=self.img.get_rect()
+        self.rect.center=direct
+    def update(self):
+        if not self.alive: return
+        screen.blit(self.img,self.rect)
+        self.count+=1
+        if self.count>=self.max-1:
+            self.alive = False
+
+
+screen=pygame.display.set_mode(size)
+pygame.display.set_caption('made')
+pygame.mixer.music.load(musicfile)
+clock=pygame.time.Clock()
+pygame.mixer.music.play(1,0)
+starttime = time.time()
+
+while True:
+    screen.fill((0,0,0))
+    for event in pygame.event.get():
+        if event.type==pygame.QUIT:
+            with open(thisdir+'data.txt','w',encoding='utf8') as f: #谱面数据储存路径
+                #print("open")
+                for i in commands:
+                    f.write(i[0]+' '+i[1]+'\n')
+                    print("wrote it")
+            exit()
+        elif event.type==pygame.KEYDOWN:
+            show.add(event.key)
+    for i in range(4):
+        rect.center=centers[i]
+        screen.blit(fiximg,rect)
+    show.update()
+    pygame.display.flip()

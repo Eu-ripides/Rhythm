@@ -1,0 +1,333 @@
+import time,os,random,math,pygame
+from typing import Type
+from pygame.constants import NOEVENT
+
+PATH="C:/Users/23942/Desktop/程序作业/Python/musicgame/"#文件路径
+FILE={
+    'playfile':PATH+"music/",#演奏音乐文件夹
+    'image':PATH+"image/"#图片文件夹
+}
+
+size=[1080,720]#窗口大小
+fixedspeed=650#规定固定下落速度
+AUTO=True
+
+#pygame初始化
+pygame.init()
+screen=pygame.display.set_mode(size)
+pygame.display.set_caption('dabeat')#窗口名称
+clock=pygame.time.Clock()
+
+#设置菜单背景
+menu=pygame.image.load(FILE['image']+'screen.png')
+menurect=menu.get_rect()
+#设置游戏背景
+#游戏通道显示
+pge=pygame.image.load(FILE['image']+'note\passage1.png')
+pgerect=pygame.Rect(110,0,240,740)
+#游戏背景显示
+bg=True
+bgcenter=True#背景图片是否中央显示
+bgimgf=FILE['image']+'background/'+random.choice(os.listdir(FILE['image']+'background/'))#从背景文件夹种随机抽取一张图片
+bgimg=pygame.image.load(bgimgf)
+if bgcenter:
+    bgrect=bgimg.get_rect()
+    bgrect.center=(540,360)#中心坐标
+else:bgcenter=(0,0)
+
+#导入音乐和谱面文件
+files=os.listdir(FILE['playfile'])#音乐-谱面目录
+playfile=None#音乐谱面单独文件夹
+musicf=None#音乐文件
+dataf=None#谱面文件
+def _import(playfile):#导入函数
+    file=os.listdir(FILE['playfile']+playfile)#文件路径列表
+    musicf=None
+    dataf=None
+    for i in file:
+        part=os.path.splitext(i)#分割后缀名
+        if len(part)!=2:continue
+        if part[1]=='.mp3':musicf=FILE['playfile']+playfile+'/'+i
+        if part[1]=='.txt':dataf=FILE['playfile']+playfile+'/'+i
+    return musicf,dataf
+
+
+
+class button:#交互界面按钮
+    def __init__(self,text,color,pos,size):#文本，颜色，位置，大小
+        self.fontch=pygame.font.Font(FILE['image']+'font/SIMYOU.TTF',size)
+        self.color=color
+        self.text=text
+        self.showtext=self.fontch.render(self.text,False,self.color)
+        self.pos=pos
+        self.rect=self.showtext.get_rect()
+        self.width=self.rect.right-self.rect.left
+        self.height=self.rect.bottom-self.rect.top
+    def display(self):
+        screen.blit(self.showtext,self.pos)
+    def click(self,mousepos):#监视光标是否在按钮上
+        click_x=mousepos[0]>self.pos[0] and mousepos[0]<self.pos[0]+self.width
+        click_y=mousepos[1]>self.pos[1] and mousepos[1]<self.pos[1]+self.height
+        if click_x and click_y:
+            return True
+        else:return False
+
+
+fonttext=pygame.font.Font(FILE['image']+'font/SIMYOU.TTF',24)
+class text:#交互界面文字
+    def __init__(self):
+        self.color=(255,255,255)
+        self.pos=(145,345)
+        self.text=None     
+    def update(self,text):
+        self.text=text
+        surf=fonttext.render(self.text,False,self.color)
+        screen.blit(surf,self.pos)
+textmu=text()
+
+
+#开始菜单交互界面
+BEGIN=True
+order=0;length=len(files)#显示音乐名称
+Play=button('来打节奏吧！',(255,255,255),(145,255),36)
+Quit=button('累了，歇~',(255,255,255),(145,300),36)
+last=button('<<',(255,255,255),(145,415),24)
+next=button('>>',(255,255,255),(200,415),24)
+while BEGIN:
+    screen.fill((0,0,0))
+    for event in pygame.event.get():
+        if event.type==pygame.QUIT:
+            pygame.quit()
+            exit()
+        elif event.type==pygame.MOUSEBUTTONDOWN:
+            if Play.click(event.pos):
+                playfile=files[order]
+                musicf,dataf=_import(playfile)
+                if not(musicf and dataf):
+                    raise ValueError("呼诶诶，文件加载失败了！")
+                BEGIN=False
+            if Quit.click(event.pos):
+                pygame.quit()
+                exit()
+            if last.click(event.pos):
+                order=order-1 if order>0 else length-1
+            if next.click(event.pos):
+                order=order+1 if order<length-1 else 0
+    Play.display()
+    Quit.display()
+    last.display()
+    next.display()
+    screen.blit(menu,menurect.center)
+    textmu.update('您要播放的音乐是：'+files[order])
+    pygame.display.flip()
+
+
+
+#判定设置:通过计算与判定线的距离实现
+missed=80
+judgeline=600
+codes=['bad','good','great','perfect']
+def accuracy(n):
+    if n<80 and n>=65:return codes[0]
+    elif n<65 and n>=40:return codes[1]
+    elif n<40 and n>=15:return codes[2]
+    else:return codes[3]
+
+#通道设置：4K通道
+passage={'0':'d','1':'f','2':'j','3':'k'}
+centerdict={#四个通道的位置
+    'd':[140,650],
+    'f':[140+1*60,600],
+    'j':[140+2*60,600],
+    'k':[140+3*60,600]
+}
+centerlist=[
+    [140,600],
+    [140+1*60,600],
+    [140+2*60,600],
+    [140+3*60,600]
+]
+
+#对应键盘的映射
+pykeys={100:'d',102:'f',106:'j',107:'k'}
+pyvals={'d':100,'f':102,'j':106,'k':107}
+pypresskeys={'d':[],'f':[],'j':[],'k':[]}#按键通道，里面装填note的信息
+
+
+#读取谱面文件，转成一个列表：【通道，添加到初始位置的时间，速度】
+def to_sort(item):#用于之后对下落顺序排序
+    return float(item[1])
+def loadthythm():#读取谱面数据
+    showlist=[]
+    with open(dataf,'r',encoding='utf8') as f:
+        for i in f.readlines():
+            i=i.strip().split(' ')
+            speed=fixedspeed
+            i.append(speed)
+            i[0]=passage[i[0]]
+            showlist.append(i)
+    showlist.sort(key=to_sort)
+    #print('loading is ok!!')
+    return showlist
+showlist=loadthythm()
+adtime=(judgeline+127)/fixedspeed#用于调整延迟
+
+#确定note的初始位置
+def addshows():
+    if showlist and time.time()-starttime>float(showlist[0][1]):
+        item=showlist.pop(0)
+        posY=-127#初始高度
+        pos=(centerdict[item[0]][0],posY)#note的初始位置
+        ways.add(list(pos),item[2],item[0])#添加note到列表中和对应的按键通道列表中
+
+#自动按下模式
+def autopressed():
+    for _,j in enumerate(pykeys.values()):
+        if not pypresskeys[j]:continue#如果按键通道里没有note，就跳过
+        d=pypresskeys[j][0].distance()#计算离判定线的距离
+        if d<=15:
+            ways.press(pyvals[j])
+
+#note类
+class Imgs:
+    def __init__(self,pos,speed,direct):#位置，判定线，速度，通道
+        self.starttime=time.time()#记录起始时间
+        self.img=pygame.image.load(FILE['image']+'note/note.png').convert_alpha()#note的贴图
+        self.speed=speed#note速度
+        self.center=judgeline#判定点的位置
+        self.direct=direct#note所在的键盘通道
+        self.alive=True#note是否有效（如果miss了或已按下则无效）
+        self.pressed=False#note是否有对应按键按下
+        self.blitpos=pos#覆盖note位置
+        self.pos=pos#note位置
+        self.finish=pos[1]#note用于计算与判定线距离的位置
+        self.rect=self.img.get_rect()#note的矩形信息
+    def distance(self):#离判定点的距离
+        return abs(self.finish-self.center)
+    def outrange(self):#判断是否越过判定线
+        return self.finish>self.center
+    def update(self,t):
+        if not self.alive:return
+        #若note未按下，则更新note的位置，若note已按下，保持位置
+        if not self.pressed:
+            y=-127+(t-self.starttime)*self.speed
+            self.finish=y
+        else:
+            y=self.finish
+        d=abs(y-self.center)
+        if (d>=missed and not self.pressed and self.outrange()):#判定note是否miss
+            combo.misscombo()
+            showscore.add('miss')
+            self.alive=False
+            return self
+        if self.pressed:#如果note已经按下
+            self.alive=False
+        #将更新后的位置显示
+        self.rect.center=(round(self.pos[0]),round(y))
+        screen.blit(self.img,self.rect)
+        return self
+
+
+#combo数显示
+fontnum=pygame.font.Font(FILE['image']+'font/segoeprb.ttf',24)
+class Combo:
+    def __init__(self):
+        self.combo=0
+        self.center=[110+120,665]
+    def addcombo(self,accura):#如果判定结果比great差，combo数清零
+        if accura=='good' or accura=='bad' :self.combo=0
+        else:self.combo+=1
+    def misscombo(self):#如果miss，combo数清零
+        self.combo=0
+    def update(self):
+        surf=fontnum.render(str(self.combo),False,(219,224,224))
+        rect=surf.get_rect()
+        rect.center=self.center
+        screen.blit(surf,rect.center)
+combo=Combo()
+
+
+#显示判定结果
+class Showscore:
+    def __init__(self):
+        file=FILE['image']+'score/'
+        self.score={
+            'miss':pygame.image.load(file+'miss.png'),
+            'bad':pygame.image.load(file+'bad.png'),
+            'good':pygame.image.load(file+'good.png'),
+            'great':pygame.image.load(file+'great.png'),
+            'perfect':pygame.image.load(file+'perfect.png'),
+        }
+        self.imglist=[]#判定结果的列表【判定结果，判定结果显示的时间】
+        self.max=30#显示时间
+        self.rect=pygame.Rect(175,621,180,90)#显示位置
+    def add(self,code):
+        self.imglist=[self.score[code],0]
+    def update(self):#判定显示一定时间后消失，或者被新判定替代
+        if self.imglist:
+            screen.blit(self.imglist[0],self.rect)#显示判定
+            self.imglist[1]+=1
+            if self.imglist[1]>=self.max:
+                self.imglist=[]
+showscore=Showscore()
+
+
+#对note的一些处理方法
+class Ways:
+    def __init__(self):
+        self.imglist=[]#里面装填img类元素
+    def update(self):#更新note的坐标
+        self.check()#删除已无效的note
+        for index,i in enumerate(self.imglist):
+            self.imglist[index]=i.update(time.time())#更新img类元素的信息
+    def add(self,pos,speed,direct):#添加note
+        i=Imgs(pos,speed,direct)
+        self.imglist.append(i)#添加到note列表中
+        pypresskeys[direct].append(i)#添加到对应的按键通道列表里
+    def press(self,key):#判断是否按下对应按键
+        if key not in pykeys.keys():return
+        #按压键盘时返回一个key值，检查key值按下时的距离是否在范围内，并表示相应的判定
+        if pypresskeys[pykeys[key]]:
+            d=pypresskeys[pykeys[key]][0].distance()#计算通道里离判定先最近的note的距离
+            if d<missed and not pypresskeys[pykeys[key]][0].pressed:
+                accura=accuracy(d)
+                combo.addcombo(accura)
+                showscore.add(accura)
+                pypresskeys[pykeys[key]][0].pressed=True
+    def check(self):#删除无效的note
+        for i in self.imglist[::-1]:
+            if not i.alive:
+                self.imglist.remove(i)
+                if i in pypresskeys[i.direct]:
+                    pypresskeys[i.direct].remove(i)
+ways=Ways()
+
+
+pygame.mixer.music.load(musicf)
+pygame.mixer.music.set_volume(0.8)
+starttime=time.time()
+playtime=time.time()
+#调整延迟
+while playtime-starttime<adtime:playtime=time.time()
+pygame.mixer.music.play(1,0)
+
+while True:
+    screen.fill((0,0,0))
+    if bg:
+        screen.blit(bgimg,bgrect)
+        pass
+    screen.blit(pge,pgerect)
+    for event in pygame.event.get():
+        if event.type==pygame.QUIT:
+            exit()
+        elif event.type==pygame.KEYDOWN:
+            ways.press(event.key)
+    
+    if AUTO:autopressed()
+    addshows()
+    combo.update()
+    ways.update()
+    #showmiss.update()
+    showscore.update()
+    FPS=clock.tick(90)
+    pygame.display.flip()
